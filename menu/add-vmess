@@ -1,0 +1,164 @@
+#!/bin/bash
+clear
+domain=$(cat /etc/v2ray/domain)
+until [[ $user =~ ^[a-za-z0-9_]+$ && ${user_exists} == '0' ]]; do
+clear
+echo -e "\033[0;34m━━━━━━━━━━━━━━━━━━━━━━━━\e[037;1m"
+echo -e "\e[0;41;36m  add vmess account     \e[0m"
+echo -e "\033[0;34m━━━━━━━━━━━━━━━━━━━━━━━━\e[037;1m"
+
+		read -rp "user: " -e user
+		user_exists=$(grep -w $user /etc/v2ray/config.json | wc -l)
+
+		if [[ ${user_exists} == '1' ]]; then
+                clear
+		echo -e "\033[0;34m━━━━━━━━━━━━━━━━━━━━━━━━\e[037;1m"
+        echo -e "\e[0;41;36m  add vmess account     \e[0m"
+        echo -e "\033[0;34m━━━━━━━━━━━━━━━━━━━━━━━━\e[037;1m"
+			echo ""
+			echo "a client with the specified name was already created, please choose another name."
+			echo ""
+			echo -e "\033[0;34m━━━━━━━━━━━━━━━━━━━━━━━━\e[037;1m"
+			read -n 1 -s -r -p "press any key to back on menu"
+			menu
+		fi
+	done
+
+uuid=$(cat /proc/sys/kernel/random/uuid)
+
+read -p "Expired (ex: 1m / 30m / 2h / 1d): " durasi
+
+case "$durasi" in
+  *m) seconds=$(( ${durasi%m} * 60 )) ;;
+  *h) seconds=$(( ${durasi%h} * 3600 )) ;;
+  *d) seconds=$(( ${durasi%d} * 86400 )) ;;
+  *) echo "Format tidak valid (gunakan: 30m, 2h, 1d)"; exit 1 ;;
+esac
+
+exp=$(date -d "+$seconds seconds" +"%Y-%m-%d-%H-%M-%S")
+exp_full=$exp
+
+sed -i '/#vmess$/a\### '"$user $exp_full"'\
+},{"id": "'""$uuid""'","alterid": '"0"',"email": "'""$user""'"' /etc/v2ray/config.json
+
+# Vmess WS TLS (Port 443)
+acs=`cat<<EOF
+      {
+      "v": "2",
+      "ps": "${user}",
+      "add": "${domain}",
+      "port": "443",
+      "id": "${uuid}",
+      "aid": "0",
+      "net": "ws",
+      "path": "/vmess",
+      "type": "none",
+      "host": "${domain}",
+      "tls": "tls"
+}
+EOF`
+
+# Vmess WS Non-TLS (Port 80)
+ask=`cat<<EOF
+      {
+      "v": "2",
+      "ps": "${user}",
+      "add": "${domain}",
+      "port": "80",
+      "id": "${uuid}",
+      "aid": "0",
+      "net": "ws",
+      "path": "/vmess",
+      "type": "none",
+      "host": "${domain}",
+      "tls": "none"
+}
+EOF`
+
+# Vmess gRPC TLS (Port 443)
+grpc=`cat<<EOF
+      {
+      "v": "2",
+      "ps": "${user}",
+      "add": "${domain}",
+      "port": "443",
+      "id": "${uuid}",
+      "aid": "0",
+      "net": "grpc",
+      "path": "vmess-grpc",
+      "type": "none",
+      "host": "${domain}",
+      "tls": "tls"
+}
+EOF`
+
+vmesslink1="vmess://$(echo $acs | base64 -w 0)"
+vmesslink2="vmess://$(echo $ask | base64 -w 0)"
+vmesslink3="vmess://$(echo $grpc | base64 -w 0)"
+
+systemctl restart v2ray.service
+clear
+
+BOT_TOKEN=$(cat /etc/v2ray/bot/token.txt)
+CHAT_ID=$(cat /etc/v2ray/bot/id.txt)
+
+TEXT="<b>━━━━━━━━━━━━━━━━━━━━━━━━</b>%0A"
+TEXT+="<b>     [ VMESS ACCOUNT ]     </b>%0A"
+TEXT+="<b>━━━━━━━━━━━━━━━━━━━━━━━━</b>%0A"
+TEXT+="<b>Hostname : </b> <code>${domain}</code>%0A"
+TEXT+="<b>Username : </b> <code>${user}</code>%0A"
+TEXT+="<b>Expired  : </b> <code>${exp_full}</code>%0A"
+TEXT+="<b>━━━━━━━━━━━━━━━━━━━━━━━━</b>%0A"
+TEXT+="<b>     Account Information     </b>%0A"
+TEXT+="<b>━━━━━━━━━━━━━━━━━━━━━━━━</b>%0A"
+TEXT+="<b>UUID/Key : </b> <code>$uuid</code>%0A"
+TEXT+="<b>AlterID  : </b> <code>0</code>%0A"
+TEXT+="<b>Path WS  : </b> <code>/vmess</code>%0A"
+TEXT+="<b>Service Name: </b> <code>vmess-grpc</code>%0A"
+TEXT+="<b>━━━━━━━━━━━━━━━━━━━━━━━━</b>%0A"
+TEXT+="<b>        Port & Service       </b>%0A"
+TEXT+="<b>━━━━━━━━━━━━━━━━━━━━━━━━</b>%0A"
+TEXT+="<b>VMESS WS TLS : 443</b>%0A"
+TEXT+="<b>VMESS WS Non-TLS : 80</b>%0A"
+TEXT+="<b>VMESS gRPC   : 443</b>%0A"
+TEXT+="<b>━━━━━━━━━━━━━━━━━━━━━━━━</b>%0A"
+TEXT+="<b>Link VMESS WS TLS : </b>%0A<code>$vmesslink1</code>%0A"
+TEXT+="<b>━━━━━━━━━━━━━━━━━━━━━━━━</b>%0A"
+TEXT+="<b>Link VMESS WS Non-TLS : </b>%0A<code>$vmesslink2</code>%0A"
+TEXT+="<b>━━━━━━━━━━━━━━━━━━━━━━━━</b>%0A"
+TEXT+="<b>Link VMESS gRPC : </b>%0A<code>$vmesslink3</code>%0A"
+TEXT+="<b>━━━━━━━━━━━━━━━━━━━━━━━━</b>"
+
+curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+    -d chat_id="${CHAT_ID}" \
+    -d parse_mode="HTML" \
+    -d text="${TEXT}" > /dev/null
+
+clear
+echo -e "
+━━━━━━━━━━━━━━━━━━━━━━━━
+ [<= vmess account =>]
+━━━━━━━━━━━━━━━━━━━━━━━━
+hostname    : ${domain}
+username    : ${user}
+expired     : ${exp_full}
+━━━━━━━━━━━━━━━━━━━━━━━━
+   account information
+━━━━━━━━━━━━━━━━━━━━━━━━
+uuid/key     : $uuid
+alterid      : 0
+path ws      : /vmess
+service name : vmess-grpc
+━━━━━━━━━━━━━━━━━━━━━━━━
+     port & service
+━━━━━━━━━━━━━━━━━━━━━━━━
+vmess ws tls : 443
+vmess ws non-tls : 80
+vmess grpc   : 443
+━━━━━━━━━━━━━━━━━━━━━━━━
+link vmess ws tls   : $vmesslink1
+━━━━━━━━━━━━━━━━━━━━━━━━
+link vmess ws non-tls : $vmesslink2
+━━━━━━━━━━━━━━━━━━━━━━━━
+link vmess grpc : $vmesslink3
+━━━━━━━━━━━━━━━━━━━━━━━━"

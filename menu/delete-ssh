@@ -1,0 +1,54 @@
+#!/bin/bash
+clear
+echo -e "\033[0;34m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
+echo -e "\E[0;41;36m               DELETE USER                \E[0m"
+echo -e "\033[0;34m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
+echo -e "USERNAME           EXPIRED               STATUS"
+echo -e "\033[0;34m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
+
+while IFS=: read -r user _ uid _ _ _ shell; do
+  if [[ "$uid" -ge 1000 && "$shell" == "/bin/false" ]]; then
+    exp_file="/etc/v2ray/ssh/expired/${user}.exp"
+    [[ -f "$exp_file" ]] && exp=$(cat "$exp_file") || exp="Unknown"
+    status=$(passwd -S "$user" | awk '{print $2}')
+    status_label="UNLOCKED"
+    [[ "$status" == "L" ]] && status_label="LOCKED"
+    printf "%-18s %-22s %-10s\n" "$user" "$exp" "$status_label"
+  fi
+done < /etc/passwd
+
+echo -e "\033[0;34m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
+echo ""
+read -p "Username SSH to Delete : " username
+
+if ! id "$username" &>/dev/null; then
+  clear
+  echo -e "\033[0;31m❌ Failure: User '$username' not found.\033[0m"
+  exit 1
+fi
+
+expired=$(cat /etc/v2ray/ssh/expired/${username}.exp 2>/dev/null || echo "Unknown")
+domain=$(cat /etc/v2ray/domain)
+rm -f /etc/v2ray/ssh/expired/${username}.exp
+
+userdel "$username" &>/dev/null
+clear
+echo -e "\033[1;32m✅ User '$username' berhasil dihapus.\033[0m"
+
+if [[ -f /etc/v2ray/bot/token.txt && -f /etc/v2ray/bot/id.txt ]]; then
+  BOT_TOKEN=$(cat /etc/v2ray/bot/token.txt)
+  CHAT_ID=$(cat /etc/v2ray/bot/id.txt)
+
+  TEXT="<b>━━━━━━━━━━━━━━━━━━━━━━━━</b>%0A"
+  TEXT+="<b> SSH ACCOUNT DELETED ❌ </b>%0A"
+  TEXT+="<b>━━━━━━━━━━━━━━━━━━━━━━━━</b>%0A"
+  TEXT+="<b>Hostname :</b> $domain%0A"
+  TEXT+="<b>Username :</b> $username%0A"
+  TEXT+="<b>Expired  :</b> $expired%0A"
+  TEXT+="<b>━━━━━━━━━━━━━━━━━━━━━━━━</b>%0A"
+
+  curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+    -d chat_id="$CHAT_ID" \
+    -d parse_mode="HTML" \
+    -d text="$TEXT" > /dev/null
+fi

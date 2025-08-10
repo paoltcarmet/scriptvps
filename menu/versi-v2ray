@@ -1,0 +1,118 @@
+#!/bin/bash
+upv() {
+# // Export Color & Information
+export RED='\033[0;31m'
+export GREEN='\033[0;32m'
+export YELLOW='\033[0;33m'
+export BLUE='\033[0;34m'
+export PURPLE='\033[0;35m'
+export CYAN='\033[0;36m'
+export LIGHT='\033[0;37m'
+export NC='\033[0m'
+export BG='\E[44;1;39m'
+export TRY="${RED}[ * ]${NC}"
+
+clear
+
+# Detect the current installed version of v2ray, if available
+v2ray_path=$(which v2ray)
+if [ -z "$v2ray_path" ]; then
+    echo "V2ray is not installed or not in the PATH."
+    exit 1
+fi
+
+current_version_output=$("$v2ray_path" version 2>&1)
+current_version=$(echo "$current_version_output" | awk '/V2Ray/{print $2}')
+
+
+echo -e "$BLUE┌────────────────────────────────────────────────────┐$NC"
+echo -e "$BLUE│$NC $BG            • UPGRADE & DOWNGRED V2RAYFLY •       $NC $BLUE│$NC"
+echo -e "$BLUE└────────────────────────────────────────────────────┘$NC"
+echo -e "$BLUE┌────────────────────────────────────────────────────┐$NC"
+echo -e "$BLUE│$NC Current installed version of V2ray: $current_version"
+echo -e "$BLUE│$NC "
+echo -e "$BLUE│$NC Choose V2ray-Core version:"
+echo -e "$BLUE│$NC "
+echo -e "$BLUE│$NC 5) v5.8.0  [Stable]"
+echo -e "$BLUE│$NC 4) v5.9.0  [Stable]"
+echo -e "$BLUE│$NC 3) v5.10.1 [Latest]"
+echo -e "$BLUE│$NC 2) v5.11.0 [Stable]"
+echo -e "$BLUE│$NC 1) v5.12.1 [Stable]"
+echo -e "$BLUE│$NC 0) v5.13.0 [Pre-release]"
+echo -e "$BLUE│$NC "
+echo -e "$BLUE└────────────────────────────────────────────────────┘$NC"
+echo -e "$BLUE•────────────────────────────────────────────────────•$NC"
+echo -e ""
+read -p " Choice: " choice
+
+case $choice in
+    0)
+        version="v5.13.0"
+        ;;
+    1)
+        version="v5.12.1"
+        ;;
+    2)
+        version="v5.11.0"
+        ;;
+    3)
+        version="v5.10.1"
+        ;;
+    4)
+        version="v5.9.0"
+        ;;
+    5)
+        version="v5.8.0"
+        ;;
+    *)
+        echo -e " $TRY Invalid choice. Exiting."
+        exit 1
+        ;;
+esac
+
+mkdir /root/v2ray
+cd /root/v2ray
+
+sudo systemctl stop v2ray
+echo -e " $TRY Downloading v2ray release..."
+wget -q "https://github.com/v2fly/v2ray-core/releases/download/$version/v2ray-linux-64.zip"
+echo -e " $TRY Unzipping v2ray release..."
+unzip v2ray-linux-64.zip >/dev/null 2>&1
+
+sudo mv "$v2ray_path" "$v2ray_path.bak"
+sudo mv ./v2ray "$v2ray_path"
+
+rm v2ray-linux-64.zip
+
+sleep 3
+
+cd /root/
+rm -r /root/v2ray
+sudo systemctl start v2ray
+
+clear
+
+v2ray_path=$(which v2ray)
+if [ -z "$v2ray_path" ]; then
+    echo "V2ray is not installed or not in the PATH."
+    exit 1
+fi
+
+current_version_output=$("$v2ray_path" version 2>&1)
+current_version=$(echo "$current_version_output" | awk '/V2Ray/{print $2}')
+
+echo -e "$BLUE┌────────────────────────────────────────────────────┐$NC"
+echo -e "$BLUE│$NC $BG            • UPGRADE & DOWNGRED V2RAYFLY •       $NC $BLUE│$NC"
+echo -e "$BLUE└────────────────────────────────────────────────────┘$NC"
+echo -e "$BLUE┌────────────────────────────────────────────────────┐$NC"
+echo -e "$BLUE│$NC"
+echo -e "$BLUE│$NC Upgrade/Downgred Successfully"
+echo -e "$BLUE│$NC Current installed version of V2rayfly: $current_version"
+echo -e "$BLUE│$NC"
+echo -e "$BLUE└────────────────────────────────────────────────────┘$NC"
+echo -e "$BLUE•────────────────────────────────────────────────────•$NC"
+echo -e ""
+read -n 1 -s -r -p "  Press any key to back on menu"
+menu
+}
+upv

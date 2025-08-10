@@ -1,0 +1,114 @@
+#!/bin/bash
+
+#----------------------------------------------------------------
+#       V2Ray Expired User Deletion Script with Telegram Notify
+#
+# - Finds and deletes expired V2Ray users from config.json.
+# - Sends a Telegram notification summarizing deleted accounts.
+# - Restarts V2Ray service only once after all deletions are
+#   complete to prevent conflicts.
+#----------------------------------------------------------------
+
+# --- Konfigurasi ---
+# Path ke file konfigurasi V2Ray Anda
+CONFIG_FILE="/etc/v2ray/config.json"
+# Path ke file kredensial bot Telegram
+BOT_TOKEN_FILE="/etc/v2ray/bot/token.txt"
+CHAT_ID_FILE="/etc/v2ray/bot/id.txt"
+
+# --- Pemeriksaan Awal ---
+# Pastikan file konfigurasi ada
+if [ ! -f "$CONFIG_FILE" ]; then
+    echo "Error: File konfigurasi V2Ray tidak ditemukan di $CONFIG_FILE"
+    exit 1
+fi
+
+# Array untuk menyimpan nama pengguna yang telah dihapus
+declare -a deleted_users_array
+
+# Dapatkan tanggal saat ini dalam detik sejak zaman (epoch)
+current_date_seconds=$(date +%s)
+
+echo "Memeriksa pengguna yang kedaluwarsa..."
+echo "----------------------------------------"
+
+# Simpan daftar pengguna dalam variabel untuk di-loop dengan aman saat memodifikasi file
+user_list=$(grep -E "^### " "$CONFIG_FILE")
+
+if [ -z "$user_list" ]; then
+    echo "Tidak ada pengguna V2Ray yang ditemukan dalam konfigurasi."
+    exit 0
+fi
+
+# Loop melalui setiap baris pengguna yang ditemukan di file konfigurasi
+while read -r line; do
+    # Ekstrak nama pengguna dan string tanggal kedaluwarsa dari komentar
+    # Format: ### username YYYY-MM-DD-HH-MM-SS
+    username=$(echo "$line" | awk '{print $2}')
+    exp_date_str=$(echo "$line" | awk '{print $3}')
+
+    # Perbaiki format tanggal sebelum konversi
+    exp_date_fixed=$(echo "$exp_date_str" | sed 's/\(....-..-..\)-\(..\)-\(..\)-\(..\)/\1 \2:\3:\4/')
+    exp_date_seconds=$(date -d "$exp_date_fixed" +%s)
+
+    # Bandingkan tanggal saat ini dengan tanggal kedaluwarsa
+    if [[ "$current_date_seconds" -gt "$exp_date_seconds" ]]; then
+        echo "-> Pengguna '$username' telah kedaluwarsa. (Tanggal Kedaluwarsa: $exp_date_str)"
+
+        # Hapus entri pengguna yang kedaluwarsa.
+        # Perintah `sed` ini menemukan baris komentar untuk pengguna dan menghapus
+        # baris tersebut (N) dan baris berikutnya, yang berisi konfigurasi JSON pengguna.
+        sed -i "/^### $username $exp_date_str\$/{N;d;}" "$CONFIG_FILE"
+        
+        echo "   ...berhasil dihapus."
+        # Tambahkan nama pengguna yang dihapus ke array untuk notifikasi
+        deleted_users_array+=("$username")
+    fi
+done <<< "$user_list"
+
+echo "----------------------------------------"
+
+# Periksa apakah ada pengguna yang dihapus dengan memeriksa ukuran array
+if [ ${#deleted_users_array[@]} -gt 0 ]; then
+    echo "Satu atau lebih akun kedaluwarsa telah dihapus. Menerapkan perubahan..."
+
+    # --- Kirim Notifikasi Telegram ---
+    if [ -f "$BOT_TOKEN_FILE" ] && [ -f "$CHAT_ID_FILE" ]; then
+        BOT_TOKEN=$(cat "$BOT_TOKEN_FILE")
+        CHAT_ID=$(cat "$CHAT_ID_FILE")
+        
+        # Buat pesan notifikasi
+        message="<b>PEMBERSIHAN AKUN KEDALUWARSA V2RAY</b>%0A"
+        message+="%0A<b>Akun berikut telah dihapus:</b>%0A"
+        for user in "${deleted_users_array[@]}"; do
+            message+="- <code>$user</code>%0A"
+        done
+        message+="%0A<b>Layanan V2Ray telah dimulai ulang untuk menerapkan perubahan.</b>"
+
+        # Kirim pesan menggunakan curl
+        curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+            -d chat_id="${CHAT_ID}" \
+            -d parse_mode="HTML" \
+            -d text="${message}" > /dev/null
+        
+        echo "Notifikasi Telegram telah dikirim."
+    else
+        echo "File token atau ID bot Telegram tidak ditemukan, notifikasi dilewati."
+    fi
+
+    # --- Mulai Ulang Layanan (Anti-Konflik) ---
+    # Proses restart hanya dilakukan satu kali setelah semua operasi penghapusan selesai.
+    # Ini memastikan tidak ada konflik antara proses penghapusan dan restart layanan.
+    
+    # Muat ulang konfigurasi systemd manager
+    systemctl daemon-reload
+
+    # Mulai ulang layanan V2Ray untuk menerapkan konfigurasi yang diperbarui
+    systemctl restart v2ray
+
+    echo "Layanan V2Ray telah dimulai ulang."
+else
+    echo "Tidak ada akun kedaluwarsa yang ditemukan. Tidak ada tindakan yang diperlukan."
+fi
+
+exit 0

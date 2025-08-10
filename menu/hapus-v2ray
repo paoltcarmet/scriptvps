@@ -1,0 +1,57 @@
+#!/bin/bash
+clear
+
+CONFIG_FILE="/etc/v2ray/config.json"
+
+number_of_clients=$(grep -c -e "^### " "$CONFIG_FILE")
+
+if [[ $number_of_clients -eq 0 ]]; then
+    echo -e "
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+         DELETE V2RAY ACCOUNT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+         No existing clients found!
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    exit 0
+fi
+
+echo -e "
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+           DELETE V2RAY ACCOUNT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+USERNAME           EXPIRED DATE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+grep -e "^### " "$CONFIG_FILE" | cut -d ' ' -f 2-3 | sort -u | awk '{ printf "  %-17s %s\n", $1, $2 }'
+
+echo -e "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+read -rp "Input username to delete: " user
+
+if [[ -z $user ]]; then
+    menu
+    exit 0
+fi
+
+exp=$(grep -w "^### $user" "$CONFIG_FILE" | cut -d ' ' -f 3 | sort -u)
+
+if [[ -z $exp ]]; then
+    echo -e "
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+         Username not found!
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    exit 1
+fi
+
+sed -i "/^### $user $exp/,/^},{/d" "$CONFIG_FILE"
+
+systemctl restart v2ray
+
+clear
+echo -e "
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+       V2RAY ACCOUNT DELETED
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ Client Name : $user
+ Expired On  : $exp
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

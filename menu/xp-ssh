@@ -1,0 +1,55 @@
+#!/bin/bash
+
+EXP_DIR="/etc/v2ray/ssh/expired"
+BOT_TOKEN=$(cat /etc/v2ray/bot/token.txt 2>/dev/null)
+CHAT_ID=$(cat /etc/v2ray/bot/id.txt 2>/dev/null)
+DOMAIN=$(cat /etc/v2ray/domain 2>/dev/null)
+
+NOW=$(date +"%Y-%m-%d-%H-%M-%S")
+RESTART_NEEDED=0
+
+echo "Memulai pembersihan akun SSH expired..."
+echo "Waktu sekarang: $NOW"
+
+for exp_file in $EXP_DIR/*.exp; do
+    [ -e "$exp_file" ] || continue
+    
+    username=$(basename "$exp_file" .exp)
+    expired_time=$(cat "$exp_file")
+    
+    if [[ "$expired_time" < "$NOW" ]]; then
+        echo "Menghapus akun: $username (Expired: $expired_time)"
+        
+        userdel "$username" > /dev/null 2>&1
+        rm -f "$exp_file"
+        
+        if [[ -n "$BOT_TOKEN" && -n "$CHAT_ID" ]]; then
+            TEXT="<b>🚫 ACCOUNT EXPIRED DELETED</b>%0A"
+            TEXT+="<b>═══════════════════</b>%0A"
+            TEXT+="<b>Hostname :</b> $DOMAIN%0A"
+            TEXT+="<b>Username :</b> $username%0A"
+            TEXT+="<b>Expired  :</b> $expired_time%0A"
+            TEXT+="<b>Action   :</b> Deleted automatically%0A"
+            
+            curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+                -d chat_id="$CHAT_ID" \
+                -d parse_mode="HTML" \
+                -d text="$TEXT" > /dev/null
+        fi
+        
+        RESTART_NEEDED=1
+    fi
+done
+
+if [ $RESTART_NEEDED -eq 1 ]; then
+    echo "Restarting Dropbear service..."
+    systemctl restart dropbear > /dev/null 2>&1
+    
+    if [[ -n "$BOT_TOKEN" && -n "$CHAT_ID" ]]; then
+        curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+            -d chat_id="$CHAT_ID" \
+            -d text="♻️ Dropbear service restarted" > /dev/null
+    fi
+else
+    echo "Tidak ada akun yang perlu dihapus"
+fi

@@ -1,0 +1,180 @@
+#!/bin/bash
+
+# =================================================================
+#               ◎ AutoScriptVPN-AIO (V1.4) ◎
+#
+#         Refactored for improved performance and readability.
+# =================================================================
+
+# --- Color Definitions ---
+NC='\033[0m' # No Color
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+CYAN='\033[0;36m'
+BICyan='\033[1;96m'
+BIWhite='\033[1;97m'
+
+# --- Function Definitions ---
+
+# Clear RAM Cache
+function run_cc() {
+    sudo sync
+    sudo echo 1 > /proc/sys/vm/drop_caches
+    sudo sync
+    sudo echo 2 > /proc/sys/vm/drop_caches
+    sudo sync
+    sudo echo 3 > /proc/sys/vm/drop_caches
+}
+
+# Clear Expired Accounts
+function run_exp() {
+    xp-ssh
+    xp-v2ray
+    xp
+}
+
+# --- Data Collection ---
+
+# Fungsi untuk membaca data vnstat
+read_vnstat_usage() {
+  local interface=$1
+  local today=$(vnstat -i "$interface" | grep "today" | awk '{print $8" "$9}')
+  local yesterday=$(vnstat -i "$interface" | grep "yesterday" | awk '{print $8" "$9}')
+  local this_month=$(vnstat -i "$interface" -m | grep "$(date +"%b '%y")" | awk '{print $9" "$10}')
+  
+  echo "$today;$yesterday;$this_month"
+}
+
+# Fungsi untuk mengonversi ke satuan MB
+convert_to_mb() {
+  local value=$1
+  local unit=$2
+  
+  case $unit in
+    B) echo "scale=6; $value / 1048576" | bc ;;
+    KiB) echo "scale=6; $value / 1024" | bc ;;
+    MiB) echo "$value" ;;
+    GiB) echo "scale=6; $value * 1024" | bc ;;
+    TiB) echo "scale=6; $value * 1048576" | bc ;;
+    *) echo "0" ;;
+  esac
+}
+
+# Mendapatkan semua interface
+all_interfaces=$(vnstat --iflist | sed 's/Available interfaces: //')
+if [ -z "$all_interfaces" ]; then
+  echo "Tidak ada interface yang tersedia di vnstat."
+  exit 1
+fi
+
+total_today=0
+total_yesterday=0
+total_month=0
+
+for iface in $all_interfaces; do
+  echo "Memproses interface: $iface"
+  result=$(read_vnstat_usage "$iface")
+  echo "Hasil untuk $iface: $result"
+  
+  today=$(echo "$result" | awk -F';' '{print $1}')
+  yesterday=$(echo "$result" | awk -F';' '{print $2}')
+  month=$(echo "$result" | awk -F';' '{print $3}')
+  
+  today_value=$(echo "$today" | awk '{print $1}')
+  today_unit=$(echo "$today" | awk '{print $2}')
+  
+  yesterday_value=$(echo "$yesterday" | awk '{print $1}')
+  yesterday_unit=$(echo "$yesterday" | awk '{print $2}')
+  
+  month_value=$(echo "$month" | awk '{print $1}')
+  month_unit=$(echo "$month" | awk '{print $2}')
+  
+  total_today=$(echo "$total_today + $(convert_to_mb $today_value $today_unit)" | bc)
+  total_yesterday=$(echo "$total_yesterday + $(convert_to_mb $yesterday_value $yesterday_unit)" | bc)
+  total_month=$(echo "$total_month + $(convert_to_mb $month_value $month_unit)" | bc)
+done
+
+# Format hasil
+format_usage() {
+  local value=$1
+  if (( $(echo "$value >= 1024" | bc -l) )); then
+    echo "$(printf "%.2f" $(echo "$value / 1024" | bc)) GB"
+  else
+    echo "$(printf "%.2f" $value) MB"
+  fi
+}
+
+ttoday=$(format_usage "$total_today")
+tyest=$(format_usage "$total_yesterday")
+tmon=$(format_usage "$total_month")
+
+# TOTAL ACCOUNT COUNT
+vma=$(cat /etc/v2ray/config.json | grep "###" | sort | uniq | wc -l)
+ssh1="$(awk -F: '$3 >= 1000 && $1 != "nobody" {print $1}' /etc/passwd | wc -l)"
+
+# SERVICE STATUS CHECKS
+ressh="${RED}OFF${NC}"
+[[ $(systemctl is-active dropbear) == "active" ]] && ressh="${GREEN}ON${NC}"
+
+resngx="${RED}OFF${NC}"
+[[ $(systemctl is-active nginx) == "active" ]] && resngx="${GREEN}ON${NC}"
+
+resv2r="${RED}OFF${NC}"
+[[ $(systemctl is-active v2ray) == "active" ]] && resv2r="${GREEN}ON${NC}"
+
+# SYSTEM INFORMATION
+DOMAIN=$(cat /etc/v2ray/domain)
+cname=$(awk -F: '/model name/ {name=$2} END {print name}' /proc/cpuinfo | sed 's/^[ \t]*//;s/[ \t]*$//')
+cores=$(awk -F: '/model name/ {core++} END {print core}' /proc/cpuinfo) # <-- BARIS YANG DIPERBAIKI
+freq=$(awk -F: ' /cpu MHz/ {freq=$2} END {print freq}' /proc/cpuinfo | sed 's/^[ \t]*//;s/[ \t]*$//')
+tram=$(free -m | awk 'NR==2 {print $2}')
+up=$(uptime -p | sed 's/up //')
+OS5=$(uname -o)
+OS1=$(lsb_release -sd)
+f1=$(lsb_release -sc)
+frem=$(free -h | grep "Mem:" | awk '{print $3 "/" $2}')
+freswp=$(free -h | grep "Swap:" | awk '{print $3 "/" $2}')
+cpu=$(top -bn1 | grep "Cpu(s)" | awk '{print $2 "% user, " $4 "% sys, " $6 "% nice, " $8 "% idle"}')
+
+# --- Main Menu Display ---
+clear
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}" | lolcat
+echo -e "\E[41;1;37m              ◎ AutoScriptVPN-AIO (V1.4) ◎                  \E[0m"
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}" | lolcat
+echo -e "${BIWhite} OS           :${GREEN} $OS1 [ $f1 ]${NC}"
+echo -e "${BIWhite} CPU          :${GREEN} $cname${NC}"
+echo -e "${BIWhite} Cores        :${GREEN} $cores Cores @ $freq MHz${NC}"
+echo -e "${BIWhite} Uptime       :${GREEN} $up${NC}"
+echo -e "${BIWhite} Domain       :${GREEN} $DOMAIN${NC}"
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}" | lolcat
+echo -e "${BIWhite} RAM Usage    :${GREEN} $frem ${BIWhite} Total RAM :${GREEN} $tram MB${NC}"
+echo -e "${BIWhite} SWAP Usage   :${GREEN} $freswp${NC}"
+echo -e "${BIWhite} CPU Usage    :${GREEN} $cpu${NC}"
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}" | lolcat
+echo -e "${BIWhite} Badwidth Use :${BICyan} ${RED} $ttoday ${NC}|${BICyan} ${RED} $tyest ${NC}|${BICyan} ${RED} $tmon${NC}"
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}" | lolcat
+echo -e "${BIWhite} Accounts     :${GREEN} SSH ($ssh1) | V2RAY ($vma)${NC}"
+echo -e "${BIWhite} Services     :${GREEN} Dropbear ${BIWhite}($ressh) | Nginx ($resngx) | V2Ray ($resv2r)${NC}"
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}" | lolcat
+echo -e "\E[41;1;37m              ◎ [    VPS MENU    ] ◎                        \E[0m"
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}" | lolcat
+echo -e "1. Menu SSH Panel VPN"
+echo -e "2. Menu V2Ray Panel VPN"
+echo -e "3. Menu Subdomain & Certificate"
+echo -e "4. Menu Backup & Restore"
+echo -e "5. Menu Change Version V2rayFly"
+echo -e "0. Change Server Banner (issue.net)"
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}" | lolcat
+echo ""
+
+# --- User Input ---
+read -p " SELECT OPTION FROM 0-5 : " mm
+case $mm in
+1) clear ; run_cc ; run_exp ; menu-ssh ;;
+2) clear ; run_cc ; run_exp ; menu-v2ray ;;
+3) clear ; run_cc ; run_exp ; menu-host ;;
+4) clear ; run_cc ; run_exp ; menu-backup ;;
+5) clear ; run_cc ; run_exp ; versi-v2ray ;;
+0) clear ; run_cc ; run_exp ; nano /etc/issue.net ;;
+*) echo "Invalid option, please try again." ; sleep 1 ; menu ;;
+esac

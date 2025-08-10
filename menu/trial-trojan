@@ -1,0 +1,86 @@
+#!/bin/bash
+clear
+
+domain=$(cat /etc/v2ray/domain)
+
+user="trial$(tr -dc a-z0-9 </dev/urandom | head -c4)"
+
+uuid=$(cat /proc/sys/kernel/random/uuid)
+
+read -p "Expired (ex: 1m / 30m / 2h / 1d): " durasi
+
+case "$durasi" in
+  *m) seconds=$(( ${durasi%m} * 60 )) ;;
+  *h) seconds=$(( ${durasi%h} * 3600 )) ;;
+  *d) seconds=$(( ${durasi%d} * 86400 )) ;;
+  *) echo "Format tidak valid (gunakan: 30m, 2h, 1d)"; exit 1 ;;
+esac
+
+exp=$(date -d "+$seconds seconds" +"%Y-%m-%d-%H-%M-%S")
+exp_full=$exp
+
+sed -i '/#trojan$/a\### '"$user $exp_full"'\
+},{"password": "'""$uuid""'","email": "'""$user""'"' /etc/v2ray/config.json
+
+trojanlink="trojan://${uuid}@${domain}:443?path=%2ftrojanws&security=tls&host=${domain}&type=ws&sni=${domain}#${user}"
+trojanlink1="trojan://${uuid}@${domain}:443?mode=gun&security=tls&type=grpc&servicename=trojan-grpc&sni=${domain}#${user}"
+
+systemctl restart v2ray.service
+
+BOT_TOKEN=$(cat /etc/v2ray/bot/token.txt)
+CHAT_ID=$(cat /etc/v2ray/bot/id.txt)
+
+TEXT="<b>━━━━━━━━━━━━━━━━━━━━━━━━</b>%0A"
+TEXT+="<b>     [ TROJAN ACCOUNT ]     </b>%0A"
+TEXT+="<b>━━━━━━━━━━━━━━━━━━━━━━━━</b>%0A"
+TEXT+="<b>Hostname : </b> <code>${domain}</code>%0A"
+TEXT+="<b>Username : </b> <code>${user}</code>%0A"
+TEXT+="<b>Expired  : </b> <code>${exp_full}</code>%0A"
+TEXT+="<b>━━━━━━━━━━━━━━━━━━━━━━━━</b>%0A"
+TEXT+="<b>     Account Information     </b>%0A"
+TEXT+="<b>━━━━━━━━━━━━━━━━━━━━━━━━</b>%0A"
+TEXT+="<b>UUID/Key : </b> <code>$uuid</code>%0A"
+TEXT+="<b>Path Trojan : </b> <code>/trojan</code>%0A"
+TEXT+="<b>Dynamic Path: </b> <code>https://bug.com/trojan</code>%0A"
+TEXT+="<b>ServiceName: </b> <code>trojan-grpc</code>%0A"
+TEXT+="<b>━━━━━━━━━━━━━━━━━━━━━━━━</b>%0A"
+TEXT+="<b>        Port & Service       </b>%0A"
+TEXT+="<b>━━━━━━━━━━━━━━━━━━━━━━━━</b>%0A"
+TEXT+="<b>Trojan WS TLS : 443</b>%0A"
+TEXT+="<b>Trojan gRPC   : 443</b>%0A"
+TEXT+="<b>━━━━━━━━━━━━━━━━━━━━━━━━</b>%0A"
+TEXT+="<b>Link Trojan WS : </b>%0A<code>$trojanlink</code>%0A"
+TEXT+="<b>━━━━━━━━━━━━━━━━━━━━━━━━</b>%0A"
+TEXT+="<b>Link Trojan gRPC : </b>%0A<code>$trojanlink1</code>%0A"
+TEXT+="<b>━━━━━━━━━━━━━━━━━━━━━━━━</b>"
+
+curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+    -d chat_id="${CHAT_ID}" \
+    -d parse_mode="HTML" \
+    -d text="${TEXT}" > /dev/null
+
+clear
+echo -e "
+━━━━━━━━━━━━━━━━━━━━━━━━
+ [<= trial trojan =>]
+━━━━━━━━━━━━━━━━━━━━━━━━
+hostname    : ${domain}
+username    : ${user}
+expired     : ${exp_full}
+━━━━━━━━━━━━━━━━━━━━━━━━
+   acount information
+━━━━━━━━━━━━━━━━━━━━━━━━
+uuid/key     : $uuid
+path trojan  : /trojan
+dynamic path : https://bug.com/trojan
+service name : trojan-grpc
+━━━━━━━━━━━━━━━━━━━━━━━━
+     port & service
+━━━━━━━━━━━━━━━━━━━━━━━━
+trojan ws tls : 443
+trojan grpc   : 443
+━━━━━━━━━━━━━━━━━━━━━━━━
+link trojan ws   : $trojanlink
+━━━━━━━━━━━━━━━━━━━━━━━━
+link trojan grpc : $trojanlink1
+━━━━━━━━━━━━━━━━━━━━━━━━"

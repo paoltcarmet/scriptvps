@@ -1,0 +1,92 @@
+#!/bin/bash
+
+# Fungsi untuk menampilkan status
+show_status() {
+    local status=$1
+    local message=$2
+    
+    case $status in
+        0)  echo -e "\033[32;1m✓ $message\033[0m" ;;  # Hijau - Sukses
+        1)  echo -e "\033[33;1m⚠ $message\033[0m" ;;  # Kuning - Peringatan
+        *)  echo -e "\033[31;1m✖ $message\033[0m" ;;  # Merah - Error
+    esac
+}
+
+# Fungsi untuk menjalankan perintah dengan spinner
+run_command() {
+    local cmd=$1
+    local name=$2
+    local log_file="/tmp/${name}.log"
+    
+    # Animasi spinner
+    local spin='-\|/'
+    local i=0
+    
+    echo -n "Menjalankan $name... "
+    
+    # Jalankan perintah di background
+    $cmd > "$log_file" 2>&1 &
+    local pid=$!
+    
+    # Tampilkan spinner selama proses berjalan
+    while kill -0 "$pid" 2>/dev/null; do
+        i=$(( (i+1) %4 ))
+        echo -ne "\b${spin:$i:1}"
+        sleep 0.1
+    done
+    
+    # Tunggu proses selesai dan dapatkan exit status
+    wait "$pid"
+    local exit_status=$?
+    
+    # Hapus spinner
+    echo -ne "\b"
+    
+    # Tampilkan status berdasarkan exit code
+    if [ $exit_status -eq 0 ]; then
+        if grep -q "Tidak ada" "$log_file"; then
+            show_status 1 "Tidak ada yang perlu dilakukan ($name)"
+        else
+            show_status 0 "$name selesai"
+        fi
+    else
+        show_status 2 "Gagal menjalankan $name"
+        echo "Log error:"
+        tail -n 5 "$log_file"
+    fi
+    
+    return $exit_status
+}
+
+# Header
+echo -e "\n\033[36;1m🛠️  SISTEM PEMBERSIHAN AKUN EXPIRED\033[0m"
+echo -e "\033[34;1m==========================================\033[0m"
+
+# Jalankan xp-ssh
+run_command "xp-ssh" "Pembersihan SSH"
+ssh_status=$?
+
+# Jalankan xp-v2ray hanya jika xp-ssh berhasil
+if [ $ssh_status -eq 0 ]; then
+    run_command "xp-v2ray" "Pembersihan V2Ray"
+    v2ray_status=$?
+else
+    echo -e "\033[33;1m⚠ Melewati pembersihan V2Ray karena pembersihan SSH gagal\033[0m"
+    v2ray_status=1
+fi
+
+# Footer dengan status akhir
+echo -e "\n\033[34;1m════════ HASIL AKHIR ════════\033[0m"
+show_status $ssh_status "Status Pembersihan SSH"
+show_status $v2ray_status "Status Pembersihan V2Ray"
+
+if [ $ssh_status -eq 0 ] && [ $v2ray_status -eq 0 ]; then
+    echo -e "\033[32;1m✔ Semua pembersihan selesai dengan sukses!\033[0m"
+elif [ $ssh_status -eq 0 ] || [ $v2ray_status -eq 0 ]; then
+    echo -e "\033[33;1m⚠ Pembersihan sebagian selesai\033[0m"
+else
+    echo -e "\033[31;1m✖ Semua pembersihan gagal!\033[0m"
+fi
+
+# Bersihkan file log
+rm -f /tmp/Pembersihan_SSH.log /tmp/Pembersihan_V2Ray.log 2>/dev/null

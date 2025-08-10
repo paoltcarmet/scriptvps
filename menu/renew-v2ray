@@ -1,0 +1,95 @@
+#!/bin/bash
+
+clear
+domain=$(cat /etc/v2ray/domain)
+BOT_TOKEN=$(cat /etc/v2ray/bot/token.txt 2>/dev/null)
+CHAT_ID=$(cat /etc/v2ray/bot/id.txt 2>/dev/null)
+
+echo -e "\033[1;36m━━━━━━━━━━━━━━━━━━━━━━━\033[0m" | lolcat
+echo -e "=[ RENEW V2RAY ACCOUNT ]=         "
+echo -e "\033[1;36m━━━━━━━━━━━━━━━━━━━━━━━\033[0m" | lolcat
+
+# Menampilkan daftar akun
+echo -e "\e[33mDaftar Akun Tersedia:\e[0m"
+echo -e "\033[1;36m━━━━━━━━━━━━━━━━━━━━━━━\033[0m" | lolcat
+data=( $(grep -oE '^### [^ ]+' /etc/v2ray/config.json | cut -d ' ' -f 2 | sort | uniq) )
+for user in "${data[@]}"; do
+    exp=$(grep -wE "^### $user" "/etc/v2ray/config.json" | awk '{print $3}' | sort | uniq)
+    echo -e "\e[33;1mUser\e[32;1m  : $user \e[0m(\e[33mExp: $exp\e[0m)"
+done
+echo -e "\033[1;36m━━━━━━━━━━━━━━━━━━━━━━━\033[0m" | lolcat
+echo ""
+
+# Validasi username
+while true; do
+    read -rp "Masukkan Username: " user
+    if grep -q "### $user " /etc/v2ray/config.json; then
+        current_exp=$(grep -w "### $user" /etc/v2ray/config.json | awk '{print $3}' | sort | uniq)
+        echo -e "Masa aktif saat ini: \e[32m$current_exp\e[0m"
+        echo "$current_exp" > /tmp/exp_$user.tmp
+        break
+    else
+        echo -e "Username \e[31mtidak ditemukan\e[0m! Silakan coba lagi."
+    fi
+done
+
+# Validasi durasi
+while true; do
+    read -p "Durasi Perpanjangan (ex: 30m/2h/7d): " durasi
+    if [[ "$durasi" =~ ^[0-9]+[mhd]$ ]]; then
+        break
+    else
+        echo -e "Format durasi \e[31msalah\e[0m! Gunakan format seperti 30m, 2h, 7d."
+    fi
+done
+
+# Hitung waktu baru
+case "$durasi" in
+    *m) seconds=$(( ${durasi%m} * 60 )) ;;
+    *h) seconds=$(( ${durasi%h} * 3600 )) ;;
+    *d) seconds=$(( ${durasi%d} * 86400 )) ;;
+esac
+new_exp=$(date -d "+$seconds seconds" +"%Y-%m-%d-%H-%M-%S")
+
+# Update expiry date
+sed -i "/### $user /s/[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}-[0-9]\{2\}-[0-9]\{2\}-[0-9]\{2\}/$new_exp/" /etc/v2ray/config.json
+systemctl restart v2ray
+
+# Ambil expired lama dari file sementara
+old_exp=$(cat /tmp/exp_$user.tmp 2>/dev/null)
+
+# Notifikasi Telegram
+if [[ -n "$BOT_TOKEN" && -n "$CHAT_ID" ]]; then
+    TEXT="<b>━━━━━━━━━━━━━━━━━━━━━━━</b>%0A"
+    TEXT+="<b>RENEWED V2RAY ACCOUNT</b>%0A"
+    TEXT+="<b>━━━━━━━━━━━━━━━━━━━━━━━</b>%0A"
+    TEXT+="<b>Username : </b><code>$user</code>%0A"
+    TEXT+="<b>Domain   : </b><code>$domain</code>%0A"
+    TEXT+="<b>Expired  : </b><code>$old_exp</code>%0A"
+    TEXT+="<b>New Exp  : </b><code>$new_exp</code>%0A"
+    TEXT+="<b>Durasi   : </b><code>$durasi</code>%0A"
+    TEXT+="<b>━━━━━━━━━━━━━━━━━━━━━━━</b>"
+
+    curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+        -d chat_id="${CHAT_ID}" \
+        -d parse_mode="HTML" \
+        -d text="${TEXT}" > /dev/null
+fi
+
+# Output akhir ke terminal
+clear
+echo -e "\033[1;36m━━━━━━━━━━━━━━━━━━━━━━━\033[0m" | lolcat
+echo -e "=[ RENEWED V2RAY ACCOUNT ]="
+echo -e "\033[1;36m━━━━━━━━━━━━━━━━━━━━━━━\033[0m" | lolcat
+echo -e "  \e[33;1mUsername\e[32;1m  : $user"
+echo -e "  \e[33;1mExp Lama\e[32;1m  : $old_exp"
+echo -e "  \e[33;1mExp Baru\e[32;1m  : $new_exp"
+echo -e "  \e[33;1mDurasi\e[32;1m    : $durasi"
+echo -e "\033[1;36m━━━━━━━━━━━━━━━━━━━━━━━\033[0m" | lolcat
+echo ""
+
+# Hapus file tmp
+rm -f /tmp/exp_$user.tmp
+
+read -n 1 -s -r -p "Tekan sembarang tombol untuk melanjutkan"
+menu

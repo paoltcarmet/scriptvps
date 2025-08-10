@@ -1,0 +1,153 @@
+#!/bin/bash
+
+#================================================================================#
+#                         SCRIPT SETUP AUTO BACKUP                               #
+#                       Manajemen Crontab & Notifikasi                           #
+#================================================================================#
+
+# --- VARIABEL GLOBAL & FUNGSI ---
+green() { echo -e "\\033[32;1m${*}\\033[0m"; }
+red() { echo -e "\\033[31;1m${*}\\033[0m"; }
+yellow() { echo -e "\\033[33;1m${*}\\033[0m"; }
+
+# Lokasi file & detail cron
+CRON_FILE="/etc/crontab"
+#BACKUP_COMMAND="/usr/local/bin/backup" # Path lengkap ke skrip backup Anda
+CRON_SCHEDULE="0 0,1,3,5,6,9,11,12,13,15,17,18,21,23 * * * root"
+CRON_LINE="${CRON_SCHEDULE} backup"
+
+# Lokasi file konfigurasi notifikasi
+TOKEN_FILE="/usr/local/etc/v2ray/bot.key"
+CHAT_ID_FILE="/usr/local/etc/v2ray/client.id"
+CONFIG_DIR=$(dirname "$TOKEN_FILE")
+
+# --- FUNGSI-FUNGSI UTAMA ---
+
+# Fungsi untuk memeriksa status auto backup
+check_status() {
+    if grep -qF "$CRON_LINE" "$CRON_FILE"; then
+        return 0 # 0 artinya AKTIF
+    else
+        return 1 # 1 artinya TIDAK AKTIF
+    fi
+}
+
+# Fungsi untuk mengedit data notifikasi Telegram
+edit_telegram_data() {
+    echo "-------------------------------------------"
+    echo "Konfigurasi Notifikasi Telegram"
+    echo "-------------------------------------------"
+    read -p "Masukkan Bot Token baru: " bot_token
+    read -p "Masukkan Chat ID Telegram baru: " chat_id
+
+    if [[ -z "$bot_token" || -z "$chat_id" ]]; then
+        echo -e "$(red 'Bot Token dan Chat ID tidak boleh kosong. Gagal menyimpan.')"
+        return 1
+    fi
+
+    mkdir -p "$CONFIG_DIR"
+    echo "$bot_token" > "$TOKEN_FILE"
+    echo "$chat_id" > "$CHAT_ID_FILE"
+    # Mengamankan file agar hanya bisa dibaca oleh root
+    chmod 600 "$TOKEN_FILE" "$CHAT_ID_FILE"
+    echo -e "$(green 'Data notifikasi berhasil disimpan!')"
+    echo "-------------------------------------------"
+}
+
+# Fungsi untuk mengaktifkan auto backup
+enable_autobackup() {
+    check_status
+    if [[ $? -eq 0 ]]; then
+        echo -e "$(yellow 'Auto backup sudah dalam keadaan AKTIF.')"
+        return
+    fi
+
+    # Cek apakah skrip backup utama ada
+    if [[ ! -f "$BACKUP_COMMAND" ]]; then
+        echo -e "$(red 'ERROR: Skrip backup utama tidak ditemukan di $BACKUP_COMMAND')"
+        echo "Pastikan Anda sudah menyalin backup.sh ke lokasi tersebut dan memberinya izin eksekusi (chmod +x)."
+        return
+    fi
+    
+    # Cek apakah data notifikasi sudah ada, jika tidak, minta pengguna untuk mengisinya
+    if [[ ! -f "$TOKEN_FILE" || ! -f "$CHAT_ID_FILE" ]]; then
+        echo -e "$(yellow 'Data notifikasi Telegram belum diatur.')"
+        edit_telegram_data
+        if [[ $? -ne 0 ]]; then
+            echo -e "$(red 'Gagal mengatur data notifikasi. Proses aktivasi dibatalkan.')"
+            return
+        fi
+    fi
+
+    # Menambahkan jadwal ke crontab
+    echo "$CRON_LINE" >> "$CRON_FILE"
+    echo -e "$(green 'Auto backup berhasil diaktifkan!')"
+}
+
+# Fungsi untuk menonaktifkan auto backup
+disable_autobackup() {
+    check_status
+    if [[ $? -eq 1 ]]; then
+        echo -e "$(yellow 'Auto backup sudah dalam keadaan TIDAK AKTIF.')"
+        return
+    fi
+
+    # Menghapus jadwal dari crontab dengan aman
+    sed -i "\|$CRON_LINE|d" "$CRON_FILE"
+    echo -e "$(green 'Auto backup berhasil dimatikan!')"
+}
+
+# --- TAMPILAN MENU UTAMA ---
+main_menu() {
+    # Validasi root
+    if [[ $EUID -ne 0 ]]; then
+       echo -e "$(red 'Error: Skrip ini harus dijalankan sebagai root.')"
+       exit 1
+    fi
+
+    while true; do
+        clear
+        echo "═══════════════════════════════════════════"
+        echo "          PENGATURAN AUTO BACKUP"
+        echo "═══════════════════════════════════════════"
+        echo -n "Status Saat Ini: "
+        check_status
+        if [[ $? -eq 0 ]]; then
+            echo -e "$(green 'ONLINE')"
+        else
+            echo -e "$(red 'OFFLINE')"
+        fi
+        echo "-------------------------------------------"
+        echo "1. Enable Auto Backup"
+        echo "2. Disable Auto Backup"
+        echo "3. Edit Data Notifikasi Telegram"
+        echo "x. Keluar"
+        echo "-------------------------------------------"
+        read -p "Pilih opsi [1,2,3,x]: " choice
+
+        case $choice in
+            1)
+                enable_autobackup
+                ;;
+            2)
+                disable_autobackup
+                ;;
+            3)
+                edit_telegram_data
+                ;;
+            x|X)
+                echo "Keluar dari skrip."
+                exit 0
+                ;;
+            *)
+                echo -e "$(red 'Pilihan tidak valid, silakan coba lagi.')"
+                ;;
+        esac
+        
+        echo ""
+        read -p "Tekan [Enter] untuk kembali ke menu..."
+    done
+}
+
+# Memulai skrip
+main_menu

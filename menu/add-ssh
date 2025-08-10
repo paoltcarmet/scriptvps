@@ -1,0 +1,77 @@
+#!/bin/bash
+clear
+echo -e "\033[0;34m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
+echo -e "\E[0;41;36m      Create SSH Account           \E[0m"
+echo -e "\033[0;34m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
+read -p "Username : " Login
+read -p "Password : " Pass
+read -p "Expired (hari): " masaaktif
+echo -e "\033[0;34m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
+clear
+
+# Membuat user
+useradd -e $(date -d "$masaaktif days" +"%Y-%m-%d") -s /bin/false -M $Login
+exp=$(date -d "$masaaktif days" +"%Y-%m-%d")
+exp_full=$(date -d "$masaaktif days" +"%Y-%m-%d-%H-%M-%S")
+
+# Set password
+echo -e "$Pass\n$Pass\n" | passwd $Login &> /dev/null
+
+# Buat direktori jika belum ada
+mkdir -p /etc/v2ray/ssh/expired
+
+# Simpan expired time ke file
+echo "$exp_full" > /etc/v2ray/ssh/expired/${Login}.exp
+
+# Ambil info
+dmsa=$(cat /etc/v2ray/domain)
+
+# Format pesan
+TEXT="<b>━━━━━━━━━━━━━━━━━━━━━━━━</b>%0A"
+TEXT+="<b>       SSH ACCOUNT       </b>%0A"
+TEXT+="<b>━━━━━━━━━━━━━━━━━━━━━━━━</b>%0A"
+TEXT+="<b>Hostname  :</b> $dmsa%0A"
+TEXT+="<b>Username  :</b> $Login%0A"
+TEXT+="<b>Password  :</b> $Pass%0A"
+TEXT+="<b>Expired   :</b> $exp%0A"
+TEXT+="<b>━━━━━━━━━━━━━━━━━━━━━━━━</b>%0A"
+TEXT+="<b>HTTP  | NTLS :</b> 80%0A"
+TEXT+="<b>HTTPS | SSL  :</b> 443%0A"
+TEXT+="<b>SSL   | TLS  :</b> 443%0A"
+TEXT+="<b>OpenSSH      :</b> 109%0A"
+TEXT+="<b>UdpGW/Badvpn :</b> 7300%0A"
+TEXT+="<b>Udp Custom   :</b> 1-65535%0A"
+TEXT+="<b>━━━━━━━━━━━━━━━━━━━━━━━━</b>%0A"
+TEXT+="<b>Payload WS HTTP :</b>%0A<code>GET / HTTP/1.1[crlf]Host: [host][crlf]Upgrade: websocket[crlf][crlf]</code>%0A"
+TEXT+="<b>━━━━━━━━━━━━━━━━━━━━━━━━</b>"
+
+# Kirim ke Telegram
+BOT_TOKEN=$(cat /etc/v2ray/bot/token.txt)
+CHAT_ID=$(cat /etc/v2ray/bot/id.txt)
+
+curl -s -X POST "https://api.telegram.org/bot$BOT_TOKEN/sendMessage" \
+  -d chat_id="$CHAT_ID" \
+  -d parse_mode="HTML" \
+  -d text="$TEXT" > /dev/null
+
+# Tampilkan ke terminal
+clear
+echo -e "
+━━━━━━━━━━━━━━━━━━━━━━━━
+       SSH ACCOUNT
+━━━━━━━━━━━━━━━━━━━━━━━━
+Hostname  :   $dmsa
+Username  :   $Login
+Password  :   $Pass
+Expired   :   $exp
+━━━━━━━━━━━━━━━━━━━━━━━━
+HTTP  | NTLS : 80
+HTTPS | SSL  : 443
+SSL   | TLS  : 443
+OpenSSH      : 109
+UdpGW/Badvpn : 7300
+Udp Custom   : 1-65535
+━━━━━━━━━━━━━━━━━━━━━━━━
+Payload WS HTTP  : GET / HTTP/1.1[crlf]Host: [host][crlf]Upgrade: websocket[crlf][crlf]
+━━━━━━━━━━━━━━━━━━━━━━━━
+"

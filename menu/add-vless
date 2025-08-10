@@ -1,0 +1,113 @@
+#!/bin/bash
+clear
+domain=$(cat /etc/v2ray/domain)
+until [[ $user =~ ^[a-za-z0-9_]+$ && ${user_exists} == '0' ]]; do
+clear
+echo -e "\033[0;34m━━━━━━━━━━━━━━━━━━━━━━━━\e[037;1m"
+echo -e "\e[0;41;36m  add vless account     \e[0m"
+echo -e "\033[0;34m━━━━━━━━━━━━━━━━━━━━━━━━\e[037;1m"
+
+		read -rp "user: " -e user
+		user_exists=$(grep -w $user /etc/v2ray/config.json | wc -l)
+
+		if [[ ${user_exists} == '1' ]]; then
+                clear
+		echo -e "\033[0;34m━━━━━━━━━━━━━━━━━━━━━━━━\e[037;1m"
+        echo -e "\e[0;41;36m  add vless account     \e[0m"
+        echo -e "\033[0;34m━━━━━━━━━━━━━━━━━━━━━━━━\e[037;1m"
+			echo ""
+			echo "a client with the specified name was already created, please choose another name."
+			echo ""
+			echo -e "\033[0;34m━━━━━━━━━━━━━━━━━━━━━━━━\e[037;1m"
+			read -n 1 -s -r -p "press any key to back on menu"
+			menu
+		fi
+	done
+
+uuid=$(cat /proc/sys/kernel/random/uuid)
+
+read -p "Expired (ex: 1m / 30m / 2h / 1d): " durasi
+
+case "$durasi" in
+  *m) seconds=$(( ${durasi%m} * 60 )) ;;
+  *h) seconds=$(( ${durasi%h} * 3600 )) ;;
+  *d) seconds=$(( ${durasi%d} * 86400 )) ;;
+  *) echo "Format tidak valid (gunakan: 30m, 2h, 1d)"; exit 1 ;;
+esac
+
+exp=$(date -d "+$seconds seconds" +"%Y-%m-%d-%H-%M-%S")
+exp_full=$exp
+
+sed -i '/#vless$/a\### '"$user $exp_full"'\
+},{"id": "'""$uuid""'","email": "'""$user""'"' /etc/v2ray/config.json
+
+vlesslink1="vless://${uuid}@${domain}:443?path=/vless&security=tls&encryption=none&type=ws&host=${domain}&sni=${domain}#${user}"
+vlesslink2="vless://${uuid}@${domain}:80?path=/vless&encryption=none&type=ws&host=${domain}#${user}"
+vlesslink3="vless://${uuid}@${domain}:443?mode=gun&security=tls&encryption=none&type=grpc&servicename=vless-grpc&sni=${domain}#${user}"
+
+systemctl restart v2ray.service
+clear
+
+BOT_TOKEN=$(cat /etc/v2ray/bot/token.txt)
+CHAT_ID=$(cat /etc/v2ray/bot/id.txt)
+
+TEXT="<b>━━━━━━━━━━━━━━━━━━━━━━━━</b>%0A"
+TEXT+="<b>     [ VLESS ACCOUNT ]     </b>%0A"
+TEXT+="<b>━━━━━━━━━━━━━━━━━━━━━━━━</b>%0A"
+TEXT+="<b>Hostname : </b> <code>${domain}</code>%0A"
+TEXT+="<b>Username : </b> <code>${user}</code>%0A"
+TEXT+="<b>Expired  : </b> <code>${exp_full}</code>%0A"
+TEXT+="<b>━━━━━━━━━━━━━━━━━━━━━━━━</b>%0A"
+TEXT+="<b>     Account Information     </b>%0A"
+TEXT+="<b>━━━━━━━━━━━━━━━━━━━━━━━━</b>%0A"
+TEXT+="<b>UUID/Key : </b> <code>$uuid</code>%0A"
+TEXT+="<b>Encryption:</b> <code>none</code>%0A"
+TEXT+="<b>Path WS  : </b> <code>/vless</code>%0A"
+TEXT+="<b>Service Name: </b> <code>vless-grpc</code>%0A"
+TEXT+="<b>━━━━━━━━━━━━━━━━━━━━━━━━</b>%0A"
+TEXT+="<b>        Port & Service       </b>%0A"
+TEXT+="<b>━━━━━━━━━━━━━━━━━━━━━━━━</b>%0A"
+TEXT+="<b>VLESS WS TLS : 443</b>%0A"
+TEXT+="<b>VLESS WS Non-TLS : 80</b>%0A"
+TEXT+="<b>VLESS gRPC   : 443</b>%0A"
+TEXT+="<b>━━━━━━━━━━━━━━━━━━━━━━━━</b>%0A"
+TEXT+="<b>Link VLESS WS TLS : </b>%0A<code>$vlesslink1</code>%0A"
+TEXT+="<b>━━━━━━━━━━━━━━━━━━━━━━━━</b>%0A"
+TEXT+="<b>Link VLESS WS Non-TLS : </b>%0A<code>$vlesslink2</code>%0A"
+TEXT+="<b>━━━━━━━━━━━━━━━━━━━━━━━━</b>%0A"
+TEXT+="<b>Link VLESS gRPC : </b>%0A<code>$vlesslink3</code>%0A"
+TEXT+="<b>━━━━━━━━━━━━━━━━━━━━━━━━</b>"
+
+curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+    -d chat_id="${CHAT_ID}" \
+    -d parse_mode="HTML" \
+    -d text="${TEXT}" > /dev/null
+
+clear
+echo -e "
+━━━━━━━━━━━━━━━━━━━━━━━━
+ [<= vless account =>]
+━━━━━━━━━━━━━━━━━━━━━━━━
+hostname    : ${domain}
+username    : ${user}
+expired     : ${exp_full}
+━━━━━━━━━━━━━━━━━━━━━━━━
+   account information
+━━━━━━━━━━━━━━━━━━━━━━━━
+uuid/key     : $uuid
+encryption   : none
+path ws      : /vless
+service name : vless-grpc
+━━━━━━━━━━━━━━━━━━━━━━━━
+     port & service
+━━━━━━━━━━━━━━━━━━━━━━━━
+vless ws tls : 443
+vless ws non-tls : 80
+vless grpc   : 443
+━━━━━━━━━━━━━━━━━━━━━━━━
+link vless ws tls   : $vlesslink1
+━━━━━━━━━━━━━━━━━━━━━━━━
+link vless ws non-tls : $vlesslink2
+━━━━━━━━━━━━━━━━━━━━━━━━
+link vless grpc : $vlesslink3
+━━━━━━━━━━━━━━━━━━━━━━━━"

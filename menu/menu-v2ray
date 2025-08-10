@@ -1,0 +1,38 @@
+#!/bin/bash
+clear
+echo -e "\e[0m
+━━━━━━━━━━━━━━━━━━━━━━━━
+ v2ray menu service
+━━━━━━━━━━━━━━━━━━━━━━━━
+
+[ 1 ] create vmess acount
+[ 2 ] create vless acount
+[ 3 ] create trojan acount
+━━━━━━━━━━━━━━━━━━━━━━━━
+
+[ 4 ] trial vmess account
+[ 5 ] trial vless account
+[ 6 ] trial trojan account
+━━━━━━━━━━━━━━━━━━━━━━━━
+
+[ 7 ] delete v2ray acount
+[ 8 ] renew v2ray acount
+[ 9 ] cek user login v2ray
+[ 10] list all member v2ray
+━━━━━━━━━━━━━━━━━━━━━━━━
+"
+read -p " select menu :  "  opt
+case $opt in
+1) clear ; add-vmess ; exit ;;
+2) clear ; add-vless ; exit ;;
+3) clear ; add-trojan ; exit ;;
+4) clear ; trial-vmess ; exit ;;
+5) clear ; trial-vlees ; exit ;;
+6) clear ; trial-trojan ; exit ;;
+7) clear ; hapus-v2ray ; exit ;;
+8) clear ; renew-v2ray ; exit ;;
+9) clear ; cek-v2ray ; exit ;;
+10) clear ; list-v2ray ; exit ;;
+x) exit ;;
+*) echo "anda salah tekan " ; sleep 1 ; menu2 ;;
+esac
